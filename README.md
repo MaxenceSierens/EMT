@@ -3,6 +3,6 @@ Ce Readme donnera des infos sur comment utiliser le code...{
 }
 
 Utile Arduino : 
-commande permettant de téléverser sur l'ide arduino (Attention à l'espace !!)
+commande permettant de téléverser sur l'ide arduino avec linux(Attention à l'espace !!)
 sudo chmod a+rw /dev/ttyACM0
 
