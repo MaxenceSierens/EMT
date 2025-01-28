@@ -1,24 +1,28 @@
 /************************************/
-/***    Arduino Wattmeter v1.0    ***/
-/***    Board: Arduino Nano 3.0   ***/
-/***      By: Freddy Alferink     ***/
+/***    Arduino Jouletmeter v1.0  ***/
+/***    Board: Arduino uno R3     ***/
+/***      By: Maxence Sierens     ***/
+/***           Louis Orlach       ***/
 /***  VERSION MODIFIEE JOULEMETRE ***/
 /***        Fevrier 2016          ***/
 /************************************/
 
 
 /********************************************************/
-/* Code modifié pour être utilisé avec une Arduino Nano */
+/* Code modifié pour être utilisé avec une Arduino uno */
 /********************************************************/
 
 
 #include <LiquidCrystal.h>
+#include <ArduinoJson.h>
+#include <Arduino_JSON.h>
+#include <assert.h>
 
 
 
 const float adcSense = 1.074219e-3;   // ADC conversion factor volt/bit (1.1V / 1024)
 float Vscale = 1.0;                   // Mise à l'echelle tension
-float Cscale = 1.0;                   // Mise à l'echelle courant
+float Cscale = 1.0;                    //Mise à l'echelle courant
 byte muxCnt = 4;                      // valeur de départ du multiplexeur ADC
 int nullVal = 512;                    // mesure de la tension de référence
 unsigned int vCnt = 0;                // compteur valeurs
@@ -31,7 +35,7 @@ int adcVolt;                          // Copy ADC voltage
 const unsigned int primAvLength = 64; // Number of samples for primary averaging
 long primMeanVolt = 0;                // Cumulative ADC mean voltage
 long primMeanVoltCopy = 0;            // Averaged primary mean voltage
-int  adcCurr;                          // Copy ADC current
+int  adcCurr;                         // Copy ADC current
 long primMeanCurr = 0;                // Cumulative ADC mean current
 long primMeanCurrCopy = 0;            // Averaged primary current
 long primMeanPow = 0;                 // Cumulative ADC mean power
@@ -44,7 +48,7 @@ const unsigned int secAvLength = 50;
 long secMeanVoltArr[secAvLength];    // Mean Voltage secondary averageing array
 long secMeanCurrArr[secAvLength];    // Mean Current secondary averageing array
 long secMeanPowArr[secAvLength];     // Real Power secondary averageing array
-long secMeanVolt = -0.398;                // Result secondary averaging mean voltage 
+long secMeanVolt = -0.398;           // Result secondary averaging mean voltage 
 long secMeanCurr = 0;                // Result secondary averaging mean current
 long secMeanPow = 0;                 // Result secondary averaging mean power
 
@@ -60,50 +64,47 @@ float paramValues[]={1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 /***  ***/
 float totAverage = 10.0;             // Total averaging length (primary * secondary)
 float fSample = 10.0;                 // ADC channel sample frequency
-LiquidCrystal lcd(2,3,8,4,5,6,7);
+LiquidCrystal lcd(7,8,9,10,11,12); // 3,4,6,11,12,13,14 
 unsigned long dernierAppui;
 unsigned int boucleAffichage = 0;
 
 
 /*********** Calibration & Hardware Data ***********/
-float Vdiv = (-2.723*log(paramValues[0]))+66.243;        // Voltage conversion factor
-float Cdiv = 4;         // Current conversion factor
+float Vdiv = 78*(30.08/27.70);      // Voltage conversion factor, ***66.243** (-2.723*log(paramValues[0]))+
+float Cdiv = 20*(4.12/4.657) ;         // Current conversion factor  ***4***
 
 
 /*** Programme ***/
 void setup() {
-  //MCUCR &= 0xEF;                       // Enable pull-up resistors
-  //DDRB &= 0xCF;                        // Buttons on D9...12 are inputs
-  // DDRB |= 0x20;                        // Overflow LED on D13 is output
-  // PORTB |= 0x1E;                       // Pull-up resistor for the buttons
-  //bitClear(PORTB, 5);                  // Overflow LED off
-  initiateADC();                       // initiate AD converter
-  setProperties();          // Set properties and Clear measured values
-  sei();   
-  Serial.begin(9600);                  // set interrupt flag
-  initLCD();
-  pinMode(12, INPUT_PULLUP);    // Bouton le plus à gauche
-  pinMode(11, INPUT_PULLUP);
-  pinMode(10, INPUT_PULLUP);
-  pinMode(9, INPUT_PULLUP);   // Bouton le plus à droite
-  dernierAppui = millis();
+  /*** Bouton ***/
+    //MCUCR &= 0xEF;                 // Enable pull-up resistors
+    //DDRB &= 0xCF;                  // Buttons on D9...12 are inputs
+    //DDRB |= 0x20;                  // Overflow LED on D13 is output
+    //PORTB |= 0x1E;                 // Pull-up resistor for the buttons
+    //bitClear(PORTB, 5);            // Overflow LED off
+    initiateADC();                   // initiate AD converter
+    setProperties();                 // Set properties and Clear measured values
+    sei();                           // Activer les interruptions globales avec "sei"
+    Serial.begin(9600);              // set interrupt flag
+    initLCD();
 
-
-   
+  // --------------- les boutons ----------------
+    pinMode(6, INPUT_PULLUP);  // d / t / v  
+    pinMode(5, INPUT_PULLUP); //reset  
+    pinMode(4, INPUT_PULLUP); //Start
+    pinMode(3, INPUT_PULLUP); // "stop"
+    dernierAppui = millis();
+  // --------------- les boutons ----------------
 }
-
 
 // Initialise l'écran au démarrage du joulemètre
 void initLCD() {
   lcd.begin(16,2);
 
-
   lcd.setCursor(0,0);
   lcd.print("Eco Motion Team");
-    
   lcd.setCursor(0,1);
   lcd.print("Polytech Nancy");
-
 
   delay(1000);
   
@@ -114,8 +115,26 @@ void initLCD() {
   lcd.print("Energie          ");
 }
 
+void sendJSONData() {
+    // Utiliser un buffer JSON pour stocker les données
+    StaticJsonDocument<200> doc;
+
+    // Ajouter les données mesurées au document JSON
+    doc["temps_minutes"] = timeCnt / 60;
+    doc["temps_secondes"] = timeCnt % 60;
+    doc["energie_joules"] = paramValues[19];
+    doc["tension_volts"] = paramValues[0];
+    doc["courant_amperes"] = paramValues[7];
+    doc["puissance_watts"] = paramValues[14];
+
+    // Envoyer le JSON sous forme de chaîne via le port série
+    serializeJson(doc, Serial);
+    Serial.println();  // Nouvelle ligne pour distinguer les messages
+    delay(1000);
+}
 
 void loop() {
+  
   if (primReady == true) {
     /*** Secondary avearaging Mean Volt ***/
     secMeanVolt -= secMeanVoltArr[secArrCnt];             // Subtract oldest value strored in array from average
@@ -145,17 +164,15 @@ void loop() {
   }
   
   /*** Mise à jour valeurs à afficher (stocké dans tableau paramValues***/
-  if (vCnt > 1000) {            //Après 1000 conversions ADC
+  if (vCnt > 1000) {   //Après 1000 conversions ADC
+        
     vCnt = 0;
-                           //mise à l'echelle de la tension
- 
-
-
+    //mise à l'echelle de la tension
     /*** Calculate values Voltage ***/
-    paramValues[0] = ((float(secMeanVolt) / totAverage) - 354.76) / 16.949;                 //Calcul tension moyenne
+    paramValues[0] = -10*(float(secMeanVolt) * Vscale / totAverage);                 //Calcul tension moyenne  - 354.76) / 16.949; - 11.71 ) / (-65.9))*10
     
     /*** Calculate values Current ***/
-    paramValues[7] = ((float(secMeanCurr) / totAverage)- 341.33) / -41.667;                 //calucl courant moyen
+    paramValues[7] = -(float(secMeanCurr) * Cscale /totAverage );                 //calucl courant moyen - 341.33) / -41.667;
     
     /*** Calculate values Power ***/
     paramValues[14] = float(secMeanPow) * Vscale * Cscale / totAverage;        // Real Power    
@@ -163,14 +180,15 @@ void loop() {
 
 
     paramValues[19] = extraLongToFloat(tEnergy) * Vscale * Cscale / fSample;    // Energy
-    // Serial.println(paramValues[0]);
-    // Serial.println(paramValues[7]);
-    // Serial.println(paramValues[14]);
-    // Serial.println(paramValues[0]);
+    Serial.println(paramValues[0]);
+    Serial.print("/ / /");
+    Serial.println(paramValues[7]);
+    Serial.println(paramValues[14]);
+    Serial.println(paramValues[0]);
     int timeCntm = timeCnt/60;
     int timeCnts=timeCnt-60*timeCntm;  
     lcd.setCursor(0,1);
-    lcd.print("Energie   ");
+    lcd.print("Energie");
 
 
   // Variante de Zihou:
@@ -236,8 +254,6 @@ void loop() {
     lcd.print(paramValues[7]);
     lcd.setCursor(14,1);
     lcd.print(" A");
-
-
   
   }
 
@@ -267,44 +283,97 @@ void loop() {
     else {
       lcd.print(timeCnts);
     }
+
     lcd.print("     ");
-    // Envoie des données sur le téléphone
-    // Serial.print("temps = ");
-    // Serial.print(timeCntm);
-    // Serial.print("min");
-    // Serial.print(timeCnts);
-    // Serial.println("s");
-    // Serial.print("tension = ");
-    // Serial.print(paramValues[0]);
-    // Serial.println(" V");
-    // Serial.print("intensite = ");
-    // Serial.print(paramValues[7]);
-    // Serial.println(" A");
-    // Serial.print("energie = ");
-    // Serial.print(paramValues[19]);
-    // Serial.println(" J");
-    // Serial.println(" ");
-    // Serial.println(boucleAffichage);
+    JSONVar doc;
+    doc["temps_minutes"] = timeCnt / 60;
+    doc["temps_secondes"] = timeCnt % 60;
+    doc["energie_joules"] = paramValues[19];
+    doc["tension_volts"] = paramValues[0];
+    doc["courant_amperes"] = paramValues[7];
+    doc["puissance_watts"] = paramValues[14];
+
+    Serial.println(JSON.stringify(doc));
+
+    //Envoie des données sur le téléphone
+    Serial.print("temps = ");
+    Serial.print(timeCntm);
+    Serial.println("min");
+
+    Serial.print(timeCnts);
+    Serial.println("s");
+
+    Serial.print("tension = ");
+    Serial.print(paramValues[0]);
+    Serial.println(" V");
+
+    Serial.print("intensite = ");
+    Serial.print(paramValues[7]);
+    Serial.println(" A");
+
+    Serial.print("energie = ");
+    Serial.print(paramValues[19]);
+    Serial.println(" J");
+
+    Serial.print("Puissance = ");
+    Serial.print(paramValues[14]);
+    Serial.println(" W");
+    Serial.println(" ");
+
+
+    Serial.println("Vscal");
+    Serial.println(Vscale);
+
+    // ******************* JSON **************//
+    Serial.print("{ temps :  \"");
+    Serial.print(doc["temps_minutes"]);
+    Serial.print(",");
+
+    Serial.print("temps_sec : \"");
+    Serial.print(doc["temps_secondes"]);
+    Serial.print(",");
+
+    Serial.print("tension : \"");
+    Serial.print(doc["tension_volts"]);
+    Serial.print(",");
+
+    Serial.print("intensite : \"");
+    Serial.print(doc["courant_amperes"]);
+    Serial.print(",");
+
+    Serial.print("energie : \"");
+    Serial.print(doc["energie_joules"]);
+    Serial.print(",");
+
+    Serial.print("Puissance : \"");
+    Serial.print(doc["puissance_watts"]);
+    Serial.print("}");
+   // ******************* JSON **************//
+    
+
+    //Serial.println(boucleAffichage);
+
+    
  
   }
 
 
   // Bouton Start
-  if(digitalRead(9) == LOW) {
+  if(digitalRead(4) == LOW) {
     ADCSRA = 0xAE; // Active le CAN
     bitWrite(ADCSRA, 6, 1);
   }
 
 
   // Bouton Stop
-  if(digitalRead(10) == LOW) {
+ if(digitalRead(3) == LOW) {
     ADCSRA = 0x2E; // Désactive le CAN
     bitWrite(ADCSRA, 6, 1);
   }
 
 
   // Bouton Remise à zéro
-  if(digitalRead(11) == LOW) {
+  if(digitalRead(5) == LOW) {
     ADCSRA = 0x2E;
     bitWrite(ADCSRA, 6, 1);
 
@@ -328,7 +397,7 @@ void loop() {
 
 
   // Bouton changement d'unité
-  if(digitalRead(12) == LOW) {
+  if(digitalRead(6) == LOW) {
     // Délai d'une seconde entre chaque appui
     if(millis() - dernierAppui > 1000)  {
       dernierAppui = millis();
@@ -448,7 +517,7 @@ void extraLongAddLong(byte* elVal, long addVal) {
 void initiateADC() {
   ADCSRB = 0x00;
   DIDR0 = 0x30;            //Désactivation des entrées numériques (nécessaire pour ADC)
-  ADMUX = 0xC4;            //Paramétrage référence de tension interne 1,1V
+  ADMUX = 0xC0;            //Paramétrage référence de tension interne 1,1V 0xC4
   ADCSRA = 0xAE;           //ADC activé avec prédiviseur *64
   ADCSRB = 0x40;           //ADC en mode libre (convertit à la volée, sans arrêt)
   
@@ -466,7 +535,7 @@ ISR(ADC_vect) {
   /***Compteur pour multiplexeur de selection de voie***/
   muxCnt++;                                //S'incrémente de 0 à 3 (repasse à 0 lorsqu'il atteint 4)
   muxCnt &= 0x03;                          // Pour sélectionner la voie sur laquelle l'ADC écoute
-  ADMUX = muxCnt | 0xC4;                   // Active la voie
+  ADMUX = muxCnt | 0xC0;                   // Active la voie 0xC4
 
 
   /***Mesure de tension***/
