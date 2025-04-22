@@ -1,0 +1,7 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "R_1206_cms")(type "Legacy")(uri "/home/fieffcoquin/Documents/EMT/Kicad/FIchiers Kicad/16 janvier 2023/Carte principale/R_1206_cms.lib")(options "")(descr ""))
+  (lib (name "CARTE_DRIVER_V2-cache")(type "Legacy")(uri "/home/fieffcoquin/Documents/EMT/Kicad/FIchiers Kicad/16 janvier 2023/Carte principale/CARTE_DRIVER_V2-cache.lib")(options "")(descr ""))
+  (lib (name "conn_coude")(type "Legacy")(uri "/home/fieffcoquin/Documents/EMT/Kicad/FIchiers Kicad/16 janvier 2023/Carte principale/conn_coude.lib")(options "")(descr ""))
+  (lib (name "Fiber_Optic")(type "Legacy")(uri "${KIPRJMOD}/Fiber_Optic/Fiber_Optic.lib")(options "")(descr ""))
+)
